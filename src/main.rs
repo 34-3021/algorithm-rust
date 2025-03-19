@@ -14,21 +14,22 @@ fn reverse_dna(dna: &str) -> String {
 
 fn dna_to_num(dna: char) -> u64 {
     match dna {
-        'A' => 0,
-        'T' => 1,
-        'C' => 2,
-        'G' => 3,
+        'A' => 1,
+        'T' => 2,
+        'C' => 3,
+        'G' => 4,
         _ => panic!("Invalid DNA character")
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RefSeq {
     start: u64,
+    end: u64,
     reverse: bool
 }
 
-const MOD: u64 = 1_000_000_007;
+const MOD: u64 = 1_000_000_000_000_7;
 
 fn insert_subseq(dna: &str, map: &mut HashMap<u64, RefSeq>, reverse: bool) {
     let dna_len = dna.len();
@@ -41,66 +42,57 @@ fn insert_subseq(dna: &str, map: &mut HashMap<u64, RefSeq>, reverse: bool) {
     for start in 0..dna_len {
         let mut hash: u64 = 0;
         for end in start..dna_len {
-            hash = (hash * 4 + dna_to_num(dna[end])) % MOD;
-            map.insert(hash, RefSeq { start: start as u64, reverse });
+            hash = (hash * 5 + dna_to_num(dna[end])) % MOD;
+            map.entry(hash).or_insert(RefSeq {
+                start: if reverse { dna_len - end - 1 } else { start } as u64,
+                end: if reverse { dna_len - start - 1 } else { end } as u64,
+                reverse
+            });
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Trace {
-    start: u64,
+    ref_seq: RefSeq,
     next: u64,
-    reverse: bool
 }
 
 fn search_trace(query: &str, ref_map: &HashMap<u64, RefSeq>) -> Vec<Option<Trace>> {
     let query_len = query.len();
     let query: Vec<char> = query.chars().collect();
-    let mut dp = vec![u64::MAX - 20; query_len]; // to avoid +1 overflow
+    let mut dp = vec![u64::MAX - 20; query_len + 1]; // -20 to avoid +1 overflow
+    dp[query_len] = 0;
 
-    (0..query_len).rev().map(|start| {
+    let mut trace = vec![None; query_len + 1];
+    for start in (0..query_len).rev() {
         let mut hash: u64 = 0;
-        (start..query_len).map(|end| {
-            hash = (hash * 4 + dna_to_num(query[start])) % MOD;
-            match ref_map.get(&hash) {
-                None => None,
-                Some(&RefSeq { start: ref_start, reverse}) => {
-                    if dp[start] > dp[end] + 1 {
-                        dp[start] = dp[end] + 1;
-                        Some(Trace {
-                            start: ref_start,
-                            next: (end + 1) as u64,
-                            reverse
-                        })
-                    } else { None }
+        for end in start..query_len {
+            hash = (hash * 5 + dna_to_num(query[end])) % MOD;
+            if let Some(ref_seq) = ref_map.get(&hash) {
+                if (dp[start] > dp[end + 1] + 1) || (dp[start] == dp[end + 1] + 1 && !ref_seq.reverse) {
+                    dp[start] = dp[end + 1] + 1;
+                    trace[start] = Some(Trace {
+                        ref_seq: ref_seq.clone(),
+                        next: (end + 1) as u64
+                    });
                 }
             }
-        }).rev().find_map(|x| x)
-    }).collect()
+        }
+    }
+
+    trace
 }
 
-#[derive(Debug)]
-struct Result {
-    start: u64,
-    end: u64,
-    reverse: bool
-}
-
-
-fn parse_trace(trace: Vec<Option<Trace>>, ref_len: usize) -> Vec<Result> {
+fn parse_trace(trace: Vec<Option<Trace>>, query_len: usize) -> Vec<RefSeq> {
     let mut result = Vec::new();
     let mut pos = 0;
-    while pos < ref_len {
-        match trace[pos] {
+    while pos < query_len {
+        match &trace[pos] {
             None => panic!("No correct trace found"),
-            Some(Trace { start, next, reverse }) => {
-                result.push( Result {
-                    start,
-                    end: start + next - (pos as u64) - 1,
-                    reverse
-                });
-                pos = next as usize;
+            Some(Trace { ref_seq, next }) => {
+                result.push(ref_seq.clone());
+                pos = *next as usize;
             }
         }
     }
@@ -114,12 +106,16 @@ fn main() {
 
     let mut ref_map = HashMap::new();
     insert_subseq(&ref_, &mut ref_map, false);
-    // insert_subseq(&ref_, &mut ref_map, true);
+    insert_subseq(&ref_, &mut ref_map, true);
 
     let trace = search_trace(&query, &ref_map);
-    let result = parse_trace(trace, ref_.len());
+    let result = parse_trace(trace, query.len());
 
     result.iter().for_each(|x| {
-        println!("[{}, {}] {}", x.start, x.end, if x.reverse {"yes"} else {"no"});
+        if x.start == x.end {
+            println!("Matched sequence: ref[{}]=\"{}\", reverse={}", x.start, ref_.chars().nth(x.start as usize).unwrap(), x.reverse);
+        } else {
+            println!("Matched sequence: ref[{}~{}]=\"{}\", reverse={}", x.start, x.end, ref_.get(x.start as usize ..= x.end as usize).unwrap(), x.reverse);
+        }
     });
 }
