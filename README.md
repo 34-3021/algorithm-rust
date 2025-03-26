@@ -1,1 +1,3 @@
-Bro, you are really an awesome Rust programmer. -- Torvalds Linus 03.20.2025
+# Fudan Algorithm Course 2025
+
+📚 Algorithm course assignments for Fudan University 2025, implemented in Rust.
